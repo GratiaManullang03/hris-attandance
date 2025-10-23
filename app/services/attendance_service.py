@@ -4,6 +4,7 @@ Attendance Service - Main business logic for attendance operations
 import math
 from typing import List, Optional
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.repositories.site_repository import SiteRepository
@@ -157,47 +158,89 @@ class AttendanceService:
                 raise BadRequestException("Location coordinates required for geofence validation")
         
         # 3. Anti-replay protection (AFTER all validations pass)
-        if not self.jti_repo.mark_jti_as_used(db, jti):
-            raise ConflictException("Replay detected")
+        # Per-user anti-replay: same token can be used by multiple users,
+        # but each user can only use it once
+        if not self.jti_repo.mark_jti_as_used(db, user_id, jti):
+            raise ConflictException("Token already used by you (replay detected)")
         
-        # 4. Determine action: check-in or check-out
+        # 4. Determine action based on Jakarta time
         now = datetime.utcnow()
         today = date.today()
+        
+        # Get current time in Jakarta timezone (WIB = UTC+7)
+        jakarta_tz = ZoneInfo("Asia/Jakarta")
+        now_jakarta = now.replace(tzinfo=ZoneInfo("UTC")).astimezone(jakarta_tz)
+        jakarta_hour = now_jakarta.hour
+        
+        # Time-based logic:
+        # Before 13:00 (1 PM) Jakarta time = ALWAYS check-in
+        # After 13:00 Jakarta time = ALWAYS check-out
+        
         existing_session = self.session_repo.get_open_session_today(db, user_id, today)
         
-        if existing_session is None:
-            # Check-in: Create new session
-            session_data = {
-                "as_user_id": user_id,
-                "as_site_id": site_id,
-                "as_checkin_at": now,
-                "as_status": "open"
-            }
-            db_session = self.session_repo.create(db, session_data)
-            
-            # Create check-in event
-            event_data = {
-                "ae_session_id": db_session.as_id,
-                "ae_user_id": user_id,
-                "ae_site_id": site_id,
-                "ae_event_type": "checkin",
-                "ae_occurred_at": now,
-                "ae_token_jti": jti,
-                "ae_lat": request.ae_lat,
-                "ae_lon": request.ae_lon,
-                "ae_device_id": request.ae_device_id
-            }
-            self.event_repo.create_event(db, event_data)
-            
-            return ScanResponse(
-                as_status="checked-in",
-                si_id=site_id,
-                as_id=db_session.as_id,
-                timestamp=now,
-                message=f"Hadir ✔ {now.strftime('%H:%M')}"
-            )
+        if jakarta_hour < 13:
+            # BEFORE 13:00 = ALWAYS CHECK-IN
+            if existing_session is None:
+                # No session yet, create new one (normal check-in)
+                session_data = {
+                    "as_user_id": user_id,
+                    "as_site_id": site_id,
+                    "as_checkin_at": now,
+                    "as_status": "open"
+                }
+                db_session = self.session_repo.create(db, session_data)
+                
+                # Create check-in event
+                event_data = {
+                    "ae_session_id": db_session.as_id,
+                    "ae_user_id": user_id,
+                    "ae_site_id": site_id,
+                    "ae_event_type": "checkin",
+                    "ae_occurred_at": now,
+                    "ae_token_jti": jti,
+                    "ae_lat": request.ae_lat,
+                    "ae_lon": request.ae_lon,
+                    "ae_device_id": request.ae_device_id
+                }
+                self.event_repo.create_event(db, event_data)
+                
+                return ScanResponse(
+                    as_status="checked-in",
+                    si_id=site_id,
+                    as_id=db_session.as_id,
+                    timestamp=now,
+                    message=f"Hadir ✔ {now_jakarta.strftime('%H:%M')} WIB"
+                )
+            else:
+                # Already has open session, but time is still before 13:00
+                # Keep the FIRST check-in time, just log event for audit
+                event_data = {
+                    "ae_session_id": existing_session.as_id,
+                    "ae_user_id": user_id,
+                    "ae_site_id": site_id,
+                    "ae_event_type": "checkin",
+                    "ae_occurred_at": now,
+                    "ae_token_jti": jti,
+                    "ae_lat": request.ae_lat,
+                    "ae_lon": request.ae_lon,
+                    "ae_device_id": request.ae_device_id
+                }
+                self.event_repo.create_event(db, event_data)
+                
+                return ScanResponse(
+                    as_status="checked-in",
+                    si_id=site_id,
+                    as_id=existing_session.as_id,
+                    timestamp=now,
+                    message=f"Sudah hadir ✔ {now_jakarta.strftime('%H:%M')} WIB (check-in: {existing_session.as_checkin_at.strftime('%H:%M')})"
+                )
         else:
-            # Check-out: Close existing session
+            # AFTER 13:00 = ALWAYS CHECK-OUT
+            if existing_session is None:
+                # No open session to close
+                raise BadRequestException("Tidak ada sesi yang perlu di-checkout (sudah lewat jam 13:00 WIB)")
+            
+            # Close existing session
             update_data = {
                 "as_checkout_at": now,
                 "as_status": "closed"
@@ -223,7 +266,7 @@ class AttendanceService:
                 si_id=site_id,
                 as_id=existing_session.as_id,
                 timestamp=now,
-                message=f"Pulang ✔ {now.strftime('%H:%M')}"
+                message=f"Pulang ✔ {now_jakarta.strftime('%H:%M')} WIB"
             )
 
     def get_session_today(self, db: Session, user_id: int) -> SessionTodayResponse:

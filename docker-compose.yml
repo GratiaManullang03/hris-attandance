@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - '8000:8000'
+    environment:
+      # Application
+      APP_NAME: ${APP_NAME}
+      APP_VERSION: ${APP_VERSION}
+      DEBUG: ${DEBUG}
+
+      # Database
+      DATABASE_URL: ${DATABASE_URL}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-3}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-3600}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+      DB_POOL_PRE_PING: ${DB_POOL_PRE_PING:-true}
+
+      # Atlas SSO
+      ATLAS_SSO_URL: ${ATLAS_SSO_URL}
+      ATLAS_APP_CODE: ${ATLAS_APP_CODE}
+      ATLAS_ENCRYPTION_KEY: ${ATLAS_ENCRYPTION_KEY}
+      ATLAS_ENCRYPTION_IV: ${ATLAS_ENCRYPTION_IV}
+
+      # Response Encryption
+      ENCRYPTION_ENABLED: ${ENCRYPTION_ENABLED:-false}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ENCRYPTION_IV: ${ENCRYPTION_IV}
+
+      # Logging
+      LOGGING_ENABLED: ${LOGGING_ENABLED:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_TO_FILE: ${LOG_TO_FILE:-false}
+
+      # Rate Limiting
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-100}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-60}
+
+      # QR JWT Settings
+      QR_JWT_SECRET: ${QR_JWT_SECRET}
+      QR_JWT_ALG: ${QR_JWT_ALG:-HS256}
+      QR_ROTATION_SECONDS: ${QR_ROTATION_SECONDS:-10}
+      QR_EXPIRE_GRACE_SECONDS: ${QR_EXPIRE_GRACE_SECONDS:-2}
+
+      # Display Authentication
+      DISPLAY_API_KEY: ${DISPLAY_API_KEY}
+
+      # Auto-checkout settings
+      AUTO_CHECKOUT_CRON: ${AUTO_CHECKOUT_CRON:-0 13 * * *}
+      AUTO_CHECKOUT_REASON: ${AUTO_CHECKOUT_REASON:-auto-policy}
+
+      # Geofence settings
+      GEOFENCE_ENFORCED: ${GEOFENCE_ENFORCED:-true}
+      DEFAULT_GEOFENCE_RADIUS_M: ${DEFAULT_GEOFENCE_RADIUS_M:-100}
+
+      # Rate limiting for scan endpoint
+      RATE_LIMIT_SCAN_PER_MIN: ${RATE_LIMIT_SCAN_PER_MIN:-30}

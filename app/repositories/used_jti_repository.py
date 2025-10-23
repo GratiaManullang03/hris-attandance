@@ -13,24 +13,30 @@ class UsedJtiRepository(BaseRepository[UsedJti]):
     def __init__(self):
         super().__init__(UsedJti)
 
-    def mark_jti_as_used(self, db: Session, jti: str) -> bool:
+    def mark_jti_as_used(self, db: Session, user_id: int, jti: str) -> bool:
         """
-        Mark JTI as used for anti-replay protection.
+        Mark JTI as used for anti-replay protection (per user).
         Returns True if successfully marked, False if already exists (replay detected).
+        
+        This allows multiple users to scan the same QR code,
+        but prevents a single user from scanning the same token twice.
         """
         try:
-            db_jti = UsedJti(uj_jti=jti)
+            db_jti = UsedJti(uj_user_id=user_id, uj_jti=jti)
             db.add(db_jti)
             db.commit()
             return True
         except IntegrityError:
-            # JTI already exists - replay detected
+            # JTI already used by this user - replay detected
             db.rollback()
             return False
 
-    def is_jti_used(self, db: Session, jti: str) -> bool:
-        """Check if JTI has been used (for debugging/verification)"""
-        return db.query(UsedJti).filter(UsedJti.uj_jti == jti).first() is not None
+    def is_jti_used(self, db: Session, user_id: int, jti: str) -> bool:
+        """Check if JTI has been used by specific user (for debugging/verification)"""
+        return db.query(UsedJti).filter(
+            UsedJti.uj_user_id == user_id,
+            UsedJti.uj_jti == jti
+        ).first() is not None
 
     def cleanup_old_jtis(self, db: Session, older_than_days: int = 1) -> int:
         """

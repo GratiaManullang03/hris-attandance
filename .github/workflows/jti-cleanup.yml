@@ -1,0 +1,44 @@
+name: JTI Cleanup Job
+
+on:
+  schedule:
+    # Run daily at 02:00 WIB (19:00 UTC previous day)
+    - cron: '0 19 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  cleanup-jti:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Call JTI Cleanup Endpoint
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          response=$(curl -s -w "\n%{http_code}" \
+            -X POST "${API_BASE_URL}/api/v1/maintenance/cleanup-jti?days_old=7" \
+            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+            -H "Content-Type: application/json")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "Response Body:"
+          echo "$body" | jq '.' || echo "$body"
+          
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "✅ JTI cleanup successful (HTTP $http_code)"
+            exit 0
+          else
+            echo "❌ JTI cleanup failed (HTTP $http_code)"
+            exit 1
+          fi
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::JTI cleanup job failed. Check the logs above for details."

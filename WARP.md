@@ -4,13 +4,14 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Overview
 
-HRIS Attendance is an AURA Application built with the **ATAMS toolkit** - a FastAPI-based framework that provides Atlas SSO authentication, database abstractions, encryption, and standardized patterns for enterprise applications.
+HRIS Attendance is an AURA application built with the ATAMS toolkit. It provides QR-based attendance tracking with JWT rolling tokens, geofence validation, and Atlas SSO integration.
 
 ## Commands
 
-### Setup & Development
+### Development
+
 ```bash
-# Create virtual environment
+# Setup virtual environment
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
@@ -19,203 +20,313 @@ pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
-# Then edit .env with your configuration
+# Edit .env with your configuration
 
-# Run application
+# Run development server
 uvicorn app.main:app --reload
 
-# Generate CRUD resources (ATAMS CLI)
-atams generate <resource_name>
+# Access API
+# - Interactive docs: http://localhost:8000/docs
+# - Health check: http://localhost:8000/health
+# - Root endpoint: http://localhost:8000/
 ```
 
-### Access Points
-- API Docs: http://localhost:8000/docs
-- Health Check: http://localhost:8000/health
-- Root: http://localhost:8000/
+### Docker
 
-### Database
-This project uses PostgreSQL with connection pooling. Database initialization happens automatically in `app/main.py` via `atams.db.init_database()`. Connection pool settings are configured in `.env` (see `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, etc.).
+```bash
+# Build and run with Docker Compose
+docker-compose up --build
 
-**Important**: Tune pool settings based on your database connection limits. Example for Aiven free tier (20 connections): `DB_POOL_SIZE=3`, `DB_MAX_OVERFLOW=5`.
+# Run in background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop containers
+docker-compose down
+```
+
+### Code Generation
+
+ATAMS provides a CLI for generating CRUD resources:
+
+```bash
+# Generate complete CRUD scaffold for a resource
+atams generate <resource_name>
+
+# Example: Generate department resource
+atams generate department
+```
+
+This creates:
+- Model in `app/models/`
+- Schema in `app/schemas/`
+- Repository in `app/repositories/`
+- Service in `app/services/`
+- Router in `app/api/v1/endpoints/`
 
 ### Testing
-There is no automated test suite. See `MANUAL_TESTING_GUIDE.md` for comprehensive API testing scenarios using curl/Postman.
+
+Note: Test infrastructure exists in `tests/` directory but no test files are currently implemented. When adding tests, use pytest:
+
+```bash
+pytest tests/
+```
 
 ## Architecture
 
-### ATAMS Framework Patterns
+### Core Technology Stack
 
-This codebase follows **ATAMS conventions** throughout:
+- **Framework**: FastAPI with SQLAlchemy ORM
+- **Database**: PostgreSQL with connection pooling
+- **Authentication**: Atlas SSO (external microservice)
+- **Deployment**: Vercel-ready (vercel.json) or Docker
 
-1. **Layered Architecture** (strict separation):
-   - **Models** (`app/models/`) - SQLAlchemy ORM models
-   - **Schemas** (`app/schemas/`) - Pydantic validation/serialization
-   - **Repositories** (`app/repositories/`) - Data access layer (extends `atams.db.BaseRepository`)
-   - **Services** (`app/services/`) - Business logic layer
-   - **API** (`app/api/`) - FastAPI endpoints
+### ATAMS Toolkit
 
-2. **Authentication/Authorization**:
-   - Uses **Atlas SSO** via `atams.sso` module
-   - Auth dependencies created in `app/api/deps.py` using `create_auth_dependencies()` factory
-   - Endpoints use `require_min_role_level(N)` for authorization checks
-   - Two-level authorization: route-level + service-level validation
+This application is built on the ATAMS toolkit (`atams>=1.0.0`), which provides:
 
-3. **Repository Pattern**:
-   - All repositories inherit from `atams.db.BaseRepository[Model]`
-   - Supports both **ORM queries** (recommended) and **raw SQL** via `execute_raw_sql_scalar()` / `execute_raw_sql_dict()`
-   - Database session management handled by ATAMS dependency injection
+- **Database**: `atams.db` - Base models, session management, and init_database()
+- **Authentication**: `atams.sso` - Atlas SSO client and auth dependency factories
+- **Encryption**: `atams.encryption` - AES encryption for GET responses
+- **Exceptions**: `atams.exceptions` - Standardized exception classes (NotFoundException, BadRequestException, ForbiddenException, ConflictException)
+- **Middleware**: `atams.middleware` - RequestIDMiddleware for request tracking
+- **Logging**: `atams.logging` - Centralized logging setup
+- **API Utilities**: `atams.api` - Health check router
 
-4. **Response Encryption**:
-   - GET endpoints can return encrypted responses when `ENCRYPTION_ENABLED=true`
-   - Uses `ENCRYPTION_KEY` and `ENCRYPTION_IV` from settings
+### Layer Architecture
 
-5. **Exception Handling**:
-   - Use ATAMS exceptions: `NotFoundException`, `BadRequestException`, `ForbiddenException`, `ConflictException`
-   - Centralized handler via `setup_exception_handlers(app)`
-
-### Database Schema
-
-Schema: `hris` (all tables use schema-qualified names)
-
-**Column Naming Convention** (prefix-based):
-- **sites** → `si_*`
-- **attendance_sessions** → `as_*` 
-- **attendance_events** → `ae_*`
-- **used_jti** → `uj_*`
-
-**Key Tables**:
-- `hris.sites` - Office locations with geofence (JSON: circle with center lat/lon + radius)
-- `hris.attendance_sessions` - Check-in to check-out sessions (one open session per user per day - enforced by unique index)
-- `hris.attendance_events` - Audit trail for all check-in/checkout actions
-- `hris.used_jti` - Anti-replay protection for JWT tokens (primary key on jti prevents reuse)
-
-All tables follow the same timestamp pattern: `*_created_at`, `*_updated_at`.
-
-### Core Business Logic
-
-**Attendance Flow** (in `attendance_service.py`):
-
-1. **Rolling Token Generation** (`/rolling-token` endpoint):
-   - Display screens fetch time-based JWT tokens every ~10 seconds
-   - Token contains: `si_id`, `slot`, `jti`, expiry
-   - Protected by `DISPLAY_API_KEY` header
-
-2. **Attendance Scan** (`/scan` endpoint):
-   - Validates JWT token (signature, expiry, audience)
-   - **Anti-replay**: Inserts `jti` into `used_jti` table (PK conflict = replay detected → 409 error)
-   - **Geofence validation**: Calculates Haversine distance between user location and site's `si_geo_fence`
-   - **Session logic**:
-     - No open session today → Create new session + check-in event
-     - Open session exists → Close session + check-out event
-   - Creates `attendance_events` record for audit trail
-
-3. **Geofence Enforcement**:
-   - Configured via `GEOFENCE_ENFORCED` setting
-   - Site's `si_geo_fence` defines circle: `{"type": "circle", "center": [lat, lon], "radius_m": 150}`
-   - Uses Haversine formula in `_calculate_distance()`
-
-### Configuration
-
-Settings inherit from `atams.AtamsBaseSettings` which provides:
-- Database configuration
-- Atlas SSO settings
-- Response encryption settings
-- CORS configuration
-- Rate limiting
-- Logging configuration
-
-Project-specific settings in `app/core/config.py`:
-- QR JWT settings (rolling token parameters)
-- Display authentication
-- Auto-checkout cron settings
-- Geofence enforcement flags
-- Scan rate limiting
-
-### Key Integration Points
-
-**Atlas SSO**:
-- Client initialized via `create_atlas_client(settings)` in `app/api/deps.py`
-- Environment requires: `ATLAS_SSO_URL`, `ATLAS_APP_CODE`, `ATLAS_ENCRYPTION_KEY`, `ATLAS_ENCRYPTION_IV`
-- User JWT validated on each protected endpoint
-
-**JWT Service** (`app/services/jwt_service.py`):
-- Generates rolling tokens with slot-based expiry
-- Validates QR tokens with anti-replay check
-- Uses `QR_JWT_SECRET` and `QR_JWT_ALG` settings
-
-### Important Constraints
-
-1. **One open session per user per day** - enforced by unique index: `attendance_sessions_one_open_per_day`
-2. **Token replay protection** - enforced by primary key on `used_jti.uj_jti`
-3. **Geofence validation** - mandatory when `GEOFENCE_ENFORCED=true`
-4. **Foreign key relationships** - Cannot delete site if referenced by sessions/events
-
-### Background Jobs (Required)
-
-While not currently implemented in code, the design requires:
-1. **Auto-checkout job** (daily at `AUTO_CHECKOUT_CRON` time) - closes all open sessions
-2. **JTI cleanup job** - purges old `used_jti` records (older than 1-7 days)
-
-These should be implemented using APScheduler or cron.
-
-## Development Guidelines
-
-### Adding New Resources
-
-Use the ATAMS CLI to generate CRUD boilerplate:
-```bash
-atams generate department  # Creates model, schema, repository, service, endpoints
+```
+app/
+├── core/           # Configuration (AtamsBaseSettings)
+├── db/             # Database session management
+├── models/         # SQLAlchemy models (hris schema)
+├── schemas/        # Pydantic request/response schemas
+├── repositories/   # Data access layer (DB operations)
+├── services/       # Business logic layer
+└── api/
+    └── v1/
+        └── endpoints/  # FastAPI routers
 ```
 
-This follows the established pattern and maintains consistency.
+**Data Flow**: Endpoint → Service → Repository → Database
 
-### Authorization Levels
+### Key Models
 
-When implementing endpoints, follow the existing role level pattern:
-- Level 1-9: Basic user access
-- Level 10-49: Regular operations
-- Level 50+: Administrative operations
+All models use the `hris` PostgreSQL schema:
 
-Example: `require_min_role_level(50)` for admin-only endpoints.
+- **AttendanceSession** (`hris.attendance_sessions`) - Daily check-in/check-out sessions
+- **AttendanceEvent** (`hris.attendance_events`) - Audit trail of all attendance actions
+- **Site** (`hris.sites`) - Physical locations with geofence data (JSONB circle)
+- **UsedJti** (`hris.used_jti`) - JWT anti-replay protection (per-user token tracking)
 
-### Database Queries
+### Authentication & Authorization
 
-Prefer ORM queries for readability, but use raw SQL for complex aggregations or performance-critical queries:
+Uses ATAMS factory pattern from `app/api/deps.py`:
 
 ```python
-# ORM (preferred)
-session = db.query(AttendanceSession).filter(AttendanceSession.as_user_id == user_id).first()
+from app.api.deps import require_auth, require_min_role_level
 
-# Raw SQL (when needed)
-result = self.execute_raw_sql_scalar(db, "SELECT COUNT(*) FROM hris.attendance_sessions WHERE as_user_id = :uid", {"uid": user_id})
+# Basic auth (any authenticated user)
+@router.get("/endpoint", dependencies=[Depends(require_auth)])
+
+# Role-based auth (minimum role level)
+@router.get("/admin", dependencies=[Depends(require_min_role_level(50))])
+```
+
+**Role Levels**:
+- `>= 1`: Regular users (employees)
+- `>= 50`: Administrators
+
+User authentication is validated against Atlas SSO. The `current_user` dict contains:
+- `user_id`: Integer ID from pt_atams_indonesia.users
+- `role_level`: Integer role level
+- Other user metadata from Atlas SSO
+
+### QR Token System
+
+**Rolling JWT Tokens** for QR display:
+- Generated via `/api/v1/attendance/sites/{si_id}/rolling-token`
+- Requires `X-Display-Key` header matching `DISPLAY_API_KEY`
+- Token rotation: 10 seconds (configurable via `QR_ROTATION_SECONDS`)
+- Grace period: 2 seconds (configurable via `QR_EXPIRE_GRACE_SECONDS`)
+- Total expiry: ~12 seconds
+
+**Token Structure**:
+```json
+{
+  "iss": "hris-attendance",
+  "aud": "site:{si_id}",
+  "si_id": "SITE001",
+  "slot": 1698765432,
+  "jti": "uuid-v4",
+  "iat": 1698765432,
+  "exp": 1698765444,
+  "mode": "AUTO"
+}
+```
+
+**Anti-Replay Protection**:
+- Each token has unique JTI (JWT ID)
+- Per-user anti-replay: same token can be used by multiple users, but only once per user
+- JTI stored in `hris.used_jti` table with `uj_user_id` + `uj_jti` unique constraint
+- Old JTI records cleaned up via GitHub Actions workflow (daily at 02:00 WIB)
+
+### Attendance Logic
+
+**Time-based Auto-Detection** (Jakarta timezone, WIB = UTC+7):
+- **Before 13:00 WIB**: Always CHECK-IN
+- **After 13:00 WIB**: Always CHECK-OUT
+
+**Scan Workflow** (`/api/v1/attendance/scan`):
+1. Verify JWT token from QR code
+2. Validate geofence (if enabled and coordinates provided)
+3. Check anti-replay (mark JTI as used for this user)
+4. Determine action based on Jakarta time
+5. Create/close attendance session
+6. Log attendance event
+
+**Geofence Validation**:
+- Site geofence stored as JSONB: `{"type": "circle", "center": [lat, lon], "radius_m": 100}`
+- Haversine formula calculates distance between user and site center
+- Configurable via `GEOFENCE_ENFORCED` and `DEFAULT_GEOFENCE_RADIUS_M`
+
+### Response Encryption
+
+GET endpoints support optional AES encryption via ATAMS encryption module:
+
+```python
+from atams.encryption import encrypt_response_data
+
+response = DataResponse(success=True, data=data)
+return encrypt_response_data(response, settings)
+```
+
+Enable via `.env`:
+```bash
+ENCRYPTION_ENABLED=true
+ENCRYPTION_KEY=<32-char-hex>  # openssl rand -hex 16
+ENCRYPTION_IV=<16-char-hex>   # openssl rand -hex 8
+```
+
+### Database Connection Pool
+
+Critical for production deployment (especially limited connection services like Aiven free tier):
+
+```bash
+# .env configuration
+DB_POOL_SIZE=3           # Core persistent connections
+DB_MAX_OVERFLOW=5        # Additional connections under load
+DB_POOL_RECYCLE=3600     # Recycle connections after 1 hour
+DB_POOL_TIMEOUT=30       # Connection timeout in seconds
+DB_POOL_PRE_PING=true    # Test connections before use
+```
+
+**Formula**: Total Connections = (DB_POOL_SIZE + DB_MAX_OVERFLOW) × Number of App Instances
+
+### Maintenance
+
+**JTI Cleanup**: GitHub Actions workflow (`.github/workflows/`) runs daily at 02:00 WIB to clean up old JTI records via `/api/v1/maintenance/cleanup-jti?days_old=7`. Requires GitHub Secrets: `API_BASE_URL` and `ADMIN_TOKEN`.
+
+## Important Configuration
+
+### Environment Variables
+
+Key settings from `.env.example`:
+
+- **Database**: `DATABASE_URL`, connection pool settings
+- **Atlas SSO**: `ATLAS_SSO_URL`, `ATLAS_APP_CODE`, encryption keys
+- **QR JWT**: `QR_JWT_SECRET`, `QR_JWT_ALG`, rotation timings
+- **Display Auth**: `DISPLAY_API_KEY` (for QR display endpoints)
+- **Geofence**: `GEOFENCE_ENFORCED`, `DEFAULT_GEOFENCE_RADIUS_M`
+- **Rate Limiting**: `RATE_LIMIT_SCAN_PER_MIN` for scan endpoint
+
+### CORS Configuration
+
+In production mode (`DEBUG=false`), CORS is restricted to `*.atamsindonesia.com` domains by default. Override via `CORS_ORIGINS` in `.env`.
+
+In debug mode (`DEBUG=true`), CORS allows all origins.
+
+## Patterns and Conventions
+
+### Repository Pattern
+
+Repositories inherit from ATAMS `BaseRepository` and provide both ORM and native SQL methods:
+
+```python
+from atams.repositories import BaseRepository
+
+class MyRepository(BaseRepository[MyModel, int]):
+    def custom_query(self, db: Session, param: str) -> List[MyModel]:
+        # Custom query logic
+        pass
+```
+
+### Service Layer
+
+Services contain business logic and orchestrate multiple repositories:
+
+```python
+class MyService:
+    def __init__(self):
+        self.repo = MyRepository()
+        
+    def process(self, db: Session, data: dict) -> Result:
+        # Business logic with proper transaction handling
+        try:
+            result = self.repo.create(db, data)
+            db.commit()
+            return result
+        except Exception:
+            db.rollback()
+            raise
 ```
 
 ### Error Handling
 
-Always use ATAMS exceptions for consistent API responses:
-```python
-from atams.exceptions import NotFoundException, BadRequestException
+Use ATAMS exceptions for consistent error responses:
 
-if not site:
-    raise NotFoundException("Site not found")
-if invalid_data:
-    raise BadRequestException("Invalid geofence format")
+```python
+from atams.exceptions import NotFoundException, BadRequestException, ForbiddenException, ConflictException
+
+# These are automatically handled by setup_exception_handlers(app)
+raise NotFoundException("Resource not found")
+raise BadRequestException("Invalid input")
+raise ForbiddenException("Access denied")
+raise ConflictException("Duplicate entry")
 ```
 
-### Security Considerations
+### Schema Naming
 
-- Never commit secrets to `.env` file
-- Use `DISPLAY_API_KEY` for display endpoints (no user auth)
-- All scan endpoints must validate geofence when `GEOFENCE_ENFORCED=true`
-- JWT tokens are single-use only (enforced by `used_jti`)
+Follow SQLAlchemy model naming conventions:
+- Table prefix based on entity: `as_` (attendance_session), `ae_` (attendance_event), `si_` (site)
+- Primary key: `{prefix}_id`
+- Foreign keys: `{prefix}_{related_entity}_id`
+- Timestamps: `{prefix}_created_at`, `{prefix}_updated_at`
 
-## API Reference
+### Datetime Handling
 
-See `MANUAL_TESTING_GUIDE.md` for complete endpoint documentation with curl examples.
+PostgreSQL datetime fields with timezone require special handling in Pydantic schemas:
 
-**Main Endpoint Groups**:
-- `/api/v1/sites` - Site management (admin, role >= 50)
-- `/api/v1/attendance/sites/{si_id}/rolling-token` - QR token generation (display key auth)
-- `/api/v1/attendance/scan` - Attendance scanning (user auth)
-- `/api/v1/attendance/sessions` - Session queries (user + admin)
-- `/api/v1/attendance/events` - Event history (user + admin)
+```python
+@field_validator('datetime_field', mode='before')
+@classmethod
+def fix_datetime_timezone(cls, v):
+    """Fix datetime timezone format from PostgreSQL"""
+    if v == '' or v is None:
+        return None
+    if isinstance(v, str):
+        import re
+        pattern = r'([+-]\d{2})$'
+        match = re.search(pattern, v)
+        if match:
+            v = v + ':00'
+    return v
+```
+
+## External Dependencies
+
+- **Atlas SSO**: External microservice for user authentication (configured via `ATLAS_SSO_URL`)
+- **PostgreSQL**: Requires `hris` schema with proper table structure
+- Users table: `pt_atams_indonesia.users` (external schema, read-only reference via `u_id`)

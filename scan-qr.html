@@ -153,9 +153,32 @@
                 border-radius: 15px;
                 overflow: hidden;
                 box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+                position: relative;
+                transition: border 0.3s, box-shadow 0.3s;
+            }
+            #scanner.captured {
+                border: 5px solid #10b981;
+                box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.3),
+                    0 10px 30px rgba(0, 0, 0, 0.2);
             }
             #scanner video {
                 width: 100%;
+                display: block;
+            }
+            #scanner canvas {
+                width: 100%;
+                display: block;
+            }
+            #snapshotOverlay {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                display: none;
+                z-index: 10;
+            }
+            #snapshotOverlay.active {
                 display: block;
             }
             .scanner-container {
@@ -280,7 +303,9 @@
                         </label>
                     </div>
 
-                    <div id="scanner"></div>
+                    <div id="scanner">
+                        <canvas id="snapshotOverlay"></canvas>
+                    </div>
 
                     <div id="scanStatus"></div>
 
@@ -301,7 +326,7 @@
                 backend:
                     'https://sona-semianimated-horridly.ngrok-free.dev/api/v1', // GANTI DENGAN URL NGROK KAMU!
                 accessToken:
-                    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyIiwidXNlcm5hbWUiOiJncmF0aWEiLCJlbWFpbCI6ImZlbGl4bWFudWxsYW5nODFAZ21haWwuY29tIiwic3RhdHVzIjoiYWN0aXZlIiwiZXhwIjoxNzYxMTkyOTE2LCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzYxMTkxMTE2LCJqdGkiOiI4ODgxNDEwYjU0Y2YyZTdjZDVlNjg1NzhjNWY4ZTBjYSJ9.QSp-LfNubRNbqt4lwRDN7fcOf58BEWCQ7Nv8McvWiKI',
+                    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyIiwidXNlcm5hbWUiOiJncmF0aWEiLCJlbWFpbCI6ImZlbGl4bWFudWxsYW5nODFAZ21haWwuY29tIiwic3RhdHVzIjoiYWN0aXZlIiwiZXhwIjoxNzYxMTk1NTMzLCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzYxMTkzNzMzLCJqdGkiOiI2YTA0NGNlNjNmZWMzNzQ5YmQzMTNkMmQ5MzkyMzVjZCJ9.KB3Po0IwzUqF3UbBKPLLDjsew3fbe1BH49AWFdH5EE0',
                 // Set true untuk bypass GPS check (HANYA UNTUK DEVELOPMENT!)
                 bypassGPS: false,
             };
@@ -310,7 +335,7 @@
             let html5QrCode = null;
             let currentStream = null;
             let currentPosition = null;
-            let isProcessingScan = false;  // Prevent multiple scans
+            let isProcessingScan = false; // Prevent multiple scans
 
             // Display backend info and check GPS
             window.addEventListener('load', () => {
@@ -362,10 +387,13 @@
                     const isFake = detectFakeGPS(position);
 
                     if (isFake) {
-                        statusEl.textContent =
-                            '⚠️ Fake GPS terdeteksi! Nonaktifkan mock location';
+                        statusEl.innerHTML =
+                            '🚫 <strong>FAKE GPS TERDETEKSI!</strong><br>Nonaktifkan Mock Location / Fake GPS app';
                         statusEl.className = 'gps-status invalid';
                         startBtn.disabled = true;
+                        startBtn.textContent = '🚫 GPS Tidak Valid';
+                        startBtn.style.background = '#dc2626';
+                        startBtn.style.cursor = 'not-allowed';
                     } else {
                         currentPosition = position;
                         statusEl.textContent = `✅ GPS aktif (akurasi: ${Math.round(
@@ -373,6 +401,9 @@
                         )}m)`;
                         statusEl.className = 'gps-status valid';
                         startBtn.disabled = false;
+                        startBtn.textContent = 'Mulai Scanner';
+                        startBtn.style.background = '';
+                        startBtn.style.cursor = '';
                     }
                 } catch (error) {
                     statusEl.textContent =
@@ -383,17 +414,69 @@
             }
 
             function detectFakeGPS(position) {
-                const accuracy = position.coords.accuracy;
+                const coords = position.coords;
+                const accuracy = coords.accuracy;
+                const altitude = coords.altitude;
+                const altitudeAccuracy = coords.altitudeAccuracy;
+                const heading = coords.heading;
+                const speed = coords.speed;
 
-                // Deteksi fake GPS berdasarkan beberapa indikator
-                if (accuracy === 0) return true; // Mock location biasanya accuracy = 0
-                if (accuracy > 200) return true; // Accuracy terlalu buruk (> 200m)
+                console.log('GPS Data:', {
+                    accuracy,
+                    altitude,
+                    altitudeAccuracy,
+                    heading,
+                    speed,
+                    lat: coords.latitude,
+                    lon: coords.longitude
+                });
 
-                // Cek apakah ada mock location indicator (Android)
+                // ===== MULTI-LAYER FAKE GPS DETECTION =====
+
+                // 1. Accuracy = 0 atau terlalu presisi (fake GPS ciri khas)
+                if (accuracy === 0 || accuracy < 3) {
+                    console.warn('Fake GPS: Accuracy too perfect');
+                    return true;
+                }
+
+                // 2. Accuracy terlalu buruk (> 100m)
+                if (accuracy > 100) {
+                    console.warn('Fake GPS: Accuracy too bad');
+                    return true;
+                }
+
+                // 3. Mock location indicator (Android)
+                if (coords.hasOwnProperty('mock') && coords.mock === true) {
+                    console.warn('Fake GPS: Mock flag detected');
+                    return true;
+                }
+
+                // 4. Altitude null atau 0 (fake GPS jarang set altitude)
+                if (altitude === null || altitude === 0) {
+                    console.warn('Fake GPS: No altitude data');
+                    return true;
+                }
+
+                // 5. Heading dan speed null padahal device bergerak
+                // (fake GPS statis tidak set ini)
+                if (heading === null && speed === null) {
+                    console.warn('Fake GPS: No heading/speed data');
+                    return true;
+                }
+
+                // 6. Koordinat suspicious (0,0 atau values aneh)
                 if (
-                    position.coords.hasOwnProperty('mock') &&
-                    position.coords.mock
+                    coords.latitude === 0 && coords.longitude === 0 ||
+                    Math.abs(coords.latitude) > 90 ||
+                    Math.abs(coords.longitude) > 180
                 ) {
+                    console.warn('Fake GPS: Invalid coordinates');
+                    return true;
+                }
+
+                // 7. AltitudeAccuracy null (real GPS selalu ada)
+                if (altitudeAccuracy === null) {
+                    console.warn('Fake GPS: No altitude accuracy');
                     return true;
                 }
 
@@ -422,8 +505,8 @@
                     await html5QrCode.start(
                         { facingMode: 'environment' },
                         {
-                            fps: 30,  // Increased from 10 to 30 for faster detection
-                            qrbox: { width: 280, height: 280 },  // Larger scan area
+                            fps: 30, // Increased from 10 to 30 for faster detection
+                            qrbox: { width: 280, height: 280 }, // Larger scan area
                             aspectRatio: 1.0,
                         },
                         onScanSuccess,
@@ -449,20 +532,17 @@
                 }
                 isProcessingScan = true;
 
-                // INSTANT FREEZE: Stop scanner and freeze video frame
-                if (html5QrCode) {
-                    html5QrCode.pause();
-                    
-                    // Visual feedback: Add green border to indicate capture
-                    const scannerEl = document.getElementById('scanner');
-                    scannerEl.style.border = '5px solid #10b981';
-                    scannerEl.style.transition = 'border 0.2s';
+                // INSTANT FREEZE: Capture video frame and freeze camera
+                captureVideoSnapshot();
+
+                // INSTANT FEEDBACK: Vibration (works on mobile)
+                if (navigator.vibrate) {
+                    navigator.vibrate([100, 50, 100]); // Double vibration pattern
                 }
 
-                // Play success sound/vibration
-                if (navigator.vibrate) {
-                    navigator.vibrate(200);  // 200ms vibration
-                }
+                // Visual feedback: Green border with glow
+                const scannerEl = document.getElementById('scanner');
+                scannerEl.classList.add('captured');
 
                 showAlert('✅ QR Terbaca! Memproses...', 'success');
 
@@ -524,13 +604,15 @@
 
                     if (response.ok) {
                         const status = data.data?.as_status || 'success';
-                        const action = status === 'checked-in' ? 'Check-In' : 'Check-Out';
+                        const action =
+                            status === 'checked-in' ? 'Check-In' : 'Check-Out';
                         showAlert(`✅ ${action} berhasil!`, 'success');
-                        
+
                         // Success: wait 3 seconds then reset
                         setTimeout(() => resetScanner(), 3000);
                     } else {
-                        const errorMsg = data.message || data.detail || 'Scan gagal';
+                        const errorMsg =
+                            data.message || data.detail || 'Scan gagal';
                         showAlert(`❌ ${errorMsg}`, 'error');
                         setTimeout(() => resetScanner(), 3000);
                     }
@@ -540,13 +622,48 @@
                 }
             }
 
+            function captureVideoSnapshot() {
+                try {
+                    // Get video element from html5-qrcode
+                    const videoEl = document.querySelector('#scanner video');
+                    if (!videoEl) return;
+
+                    // Get snapshot canvas
+                    const canvas = document.getElementById('snapshotOverlay');
+                    const ctx = canvas.getContext('2d');
+
+                    // Set canvas size to match video
+                    canvas.width = videoEl.videoWidth;
+                    canvas.height = videoEl.videoHeight;
+
+                    // Draw current video frame to canvas
+                    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+                    // Show snapshot overlay (freeze effect)
+                    canvas.classList.add('active');
+
+                    // Pause scanner after snapshot captured
+                    if (html5QrCode) {
+                        html5QrCode.pause();
+                    }
+                } catch (error) {
+                    console.error('Snapshot error:', error);
+                }
+            }
+
             function resetScanner() {
                 // Reset visual state
                 const scannerEl = document.getElementById('scanner');
                 if (scannerEl) {
-                    scannerEl.style.border = '';
+                    scannerEl.classList.remove('captured');
                 }
-                
+
+                // Hide snapshot overlay
+                const canvas = document.getElementById('snapshotOverlay');
+                if (canvas) {
+                    canvas.classList.remove('active');
+                }
+
                 // Resume scanning
                 isProcessingScan = false;
                 if (html5QrCode) {
