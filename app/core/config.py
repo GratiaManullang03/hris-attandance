@@ -16,28 +16,29 @@ class Settings(AtamsBaseSettings):
 
     All settings can be overridden via .env file or by redefining them here.
     """
-    APP_NAME: str = "hris_attendance"
-    APP_VERSION: str = "1.0.0"
+    APP_NAME: str
+    APP_VERSION: str
+    DEBUG: bool
     
     # QR JWT Settings
-    QR_JWT_SECRET: str = "change-this-to-secure-secret-key"
-    QR_JWT_ALG: str = "HS256"
-    QR_ROTATION_SECONDS: int = 10
-    QR_EXPIRE_GRACE_SECONDS: int = 2
+    QR_JWT_SECRET: str
+    QR_JWT_ALG: str
+    QR_ROTATION_SECONDS: int
+    QR_EXPIRE_GRACE_SECONDS: int
     
     # Display Authentication
-    DISPLAY_API_KEY: str = "display-secret-123"
+    DISPLAY_API_KEY: str
     
     # Auto-checkout settings
-    AUTO_CHECKOUT_CRON: str = "0 18 * * *"
-    AUTO_CHECKOUT_REASON: str = "auto-policy"
+    AUTO_CHECKOUT_CRON: str
+    AUTO_CHECKOUT_REASON: str
     
     # Geofence settings
-    GEOFENCE_ENFORCED: bool = True
-    DEFAULT_GEOFENCE_RADIUS_M: int = 150
+    GEOFENCE_ENFORCED: bool
+    DEFAULT_GEOFENCE_RADIUS_M: int
     
     # Rate limiting for scan endpoint
-    RATE_LIMIT_SCAN_PER_MIN: int = 30
+    RATE_LIMIT_SCAN_PER_MIN: int
 
 
 settings = Settings()

@@ -3,6 +3,7 @@ hris_attendance - AURA Application
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from atams.db import init_database
 from atams.logging import setup_logging_from_settings
 from atams.middleware import RequestIDMiddleware
@@ -38,19 +39,31 @@ app = FastAPI(
 )
 
 # CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
-    allow_methods=settings.cors_methods_list,
-    allow_headers=settings.cors_headers_list,
-)
+if settings.DEBUG == True:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins_list,
+        allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+        allow_methods=settings.cors_methods_list,
+        allow_headers=settings.cors_headers_list,
+    )
 
 # Request ID middleware
 app.add_middleware(RequestIDMiddleware)
 
 # Exception handlers
 setup_exception_handlers(app)
+
+# Mount static files (HTML pages)
+app.mount("/pwa", StaticFiles(directory=".", html=True), name="static")
 
 # Include routers
 app.include_router(health_router, prefix="/health", tags=["Health"])

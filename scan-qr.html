@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="id">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <meta name="theme-color" content="#10b981" />
+        <title>Scan QR - HRIS Attendance</title>
+        <link
+            rel="manifest"
+            href="data:application/json;base64,eyJuYW1lIjoiU2NhbiBRUiAtIEhSSVMiLCJzaG9ydF9uYW1lIjoiU2NhbiBRUiIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjZmZmZmZmIiwidGhlbWVfY29sb3IiOiIjMTBiOTgxIn0=" />
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                    Roboto, sans-serif;
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                min-height: 100vh;
+                padding: 20px;
+            }
+            .container {
+                max-width: 500px;
+                margin: 0 auto;
+            }
+            .card {
+                background: white;
+                border-radius: 20px;
+                padding: 30px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                margin-bottom: 20px;
+            }
+            h1 {
+                font-size: 28px;
+                margin-bottom: 25px;
+                color: #333;
+                text-align: center;
+                font-weight: 700;
+            }
+            .input-group {
+                margin-bottom: 20px;
+            }
+            .input-group label {
+                display: block;
+                margin-bottom: 8px;
+                color: #555;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .input-group input {
+                width: 100%;
+                padding: 14px;
+                border: 2px solid #e5e7eb;
+                border-radius: 10px;
+                font-size: 16px;
+                transition: border-color 0.3s;
+            }
+            .input-group input:focus {
+                outline: none;
+                border-color: #10b981;
+            }
+            .toggle-group {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 20px;
+                padding: 15px;
+                background: #f9fafb;
+                border-radius: 10px;
+            }
+            .toggle-group label {
+                margin: 0;
+                font-weight: 600;
+                color: #374151;
+            }
+            .switch {
+                position: relative;
+                display: inline-block;
+                width: 56px;
+                height: 30px;
+            }
+            .switch input {
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+            .slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: #d1d5db;
+                transition: 0.4s;
+                border-radius: 30px;
+            }
+            .slider:before {
+                position: absolute;
+                content: '';
+                height: 22px;
+                width: 22px;
+                left: 4px;
+                bottom: 4px;
+                background-color: white;
+                transition: 0.4s;
+                border-radius: 50%;
+            }
+            input:checked + .slider {
+                background-color: #10b981;
+            }
+            input:checked + .slider:before {
+                transform: translateX(26px);
+            }
+            .btn {
+                width: 100%;
+                padding: 16px;
+                border: none;
+                border-radius: 10px;
+                font-size: 18px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s;
+            }
+            .btn-primary {
+                background: #10b981;
+                color: white;
+            }
+            .btn-primary:hover {
+                background: #059669;
+                transform: translateY(-2px);
+                box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);
+            }
+            .btn-primary:disabled {
+                background: #9ca3af;
+                cursor: not-allowed;
+                transform: none;
+            }
+            .btn-secondary {
+                background: #ef4444;
+                color: white;
+                margin-top: 15px;
+            }
+            .btn-secondary:hover {
+                background: #dc2626;
+            }
+            #scanner {
+                width: 100%;
+                border-radius: 15px;
+                overflow: hidden;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            }
+            #scanner video {
+                width: 100%;
+                display: block;
+            }
+            .scanner-container {
+                display: none;
+            }
+            .scanner-container.active {
+                display: block;
+            }
+            .alert {
+                padding: 15px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+                font-weight: 500;
+            }
+            .alert-success {
+                background: #d1fae5;
+                color: #065f46;
+                border: 2px solid #10b981;
+            }
+            .alert-error {
+                background: #fee2e2;
+                color: #991b1b;
+                border: 2px solid #ef4444;
+            }
+            .alert-warning {
+                background: #fef3c7;
+                color: #92400e;
+                border: 2px solid #f59e0b;
+            }
+            .alert-info {
+                background: #dbeafe;
+                color: #1e40af;
+                border: 2px solid #3b82f6;
+            }
+            .gps-status {
+                padding: 12px;
+                border-radius: 8px;
+                margin-bottom: 15px;
+                font-size: 13px;
+                text-align: center;
+            }
+            .gps-status.checking {
+                background: #fef3c7;
+                color: #92400e;
+            }
+            .gps-status.valid {
+                background: #d1fae5;
+                color: #065f46;
+            }
+            .gps-status.invalid {
+                background: #fee2e2;
+                color: #991b1b;
+            }
+            .setup-form {
+                display: block;
+            }
+            .setup-form.hidden {
+                display: none;
+            }
+            .security-warning {
+                display: none;
+                background: #fef3c7;
+                border: 2px solid #f59e0b;
+                color: #92400e;
+                padding: 12px;
+                border-radius: 8px;
+                margin-bottom: 15px;
+                font-size: 13px;
+                text-align: center;
+            }
+            .security-warning.active {
+                display: block;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="card">
+                <h1>📱 Scan QR Code</h1>
+
+                <!-- Setup Form -->
+                <div class="setup-form" id="setupForm">
+                    <div class="gps-status checking" id="gpsStatus">
+                        🔍 Memeriksa lokasi GPS...
+                    </div>
+
+                    <p
+                        style="
+                            text-align: center;
+                            color: #6b7280;
+                            font-size: 12px;
+                            margin-bottom: 15px;
+                        "
+                        id="backendInfo">
+                        Backend:
+                        <code
+                            style="
+                                background: #f3f4f6;
+                                padding: 2px 6px;
+                                border-radius: 4px;
+                            "></code>
+                    </p>
+
+                    <button
+                        class="btn btn-primary"
+                        id="startBtn"
+                        onclick="startScanner()">
+                        Mulai Scanner
+                    </button>
+                </div>
+
+                <!-- Scanner Area -->
+                <div class="scanner-container" id="scannerContainer">
+                    <div class="toggle-group">
+                        <label for="torchToggle">🔦 Flashlight</label>
+                        <label class="switch">
+                            <input
+                                type="checkbox"
+                                id="torchToggle"
+                                onchange="toggleTorch()" />
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div id="scanner"></div>
+
+                    <div id="scanStatus"></div>
+
+                    <button class="btn btn-secondary" onclick="stopScanner()">
+                        Stop Scanner
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+        <script>
+            // ========================================
+            // CONFIG - EDIT DI SINI
+            // ========================================
+            const CONFIG = {
+                backend:
+                    'https://sona-semianimated-horridly.ngrok-free.dev/api/v1', // GANTI DENGAN URL NGROK KAMU!
+                accessToken:
+                    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyIiwidXNlcm5hbWUiOiJncmF0aWEiLCJlbWFpbCI6ImZlbGl4bWFudWxsYW5nODFAZ21haWwuY29tIiwic3RhdHVzIjoiYWN0aXZlIiwiZXhwIjoxNzYxMTkyOTE2LCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzYxMTkxMTE2LCJqdGkiOiI4ODgxNDEwYjU0Y2YyZTdjZDVlNjg1NzhjNWY4ZTBjYSJ9.QSp-LfNubRNbqt4lwRDN7fcOf58BEWCQ7Nv8McvWiKI',
+                // Set true untuk bypass GPS check (HANYA UNTUK DEVELOPMENT!)
+                bypassGPS: false,
+            };
+            // ========================================
+
+            let html5QrCode = null;
+            let currentStream = null;
+            let currentPosition = null;
+            let isProcessingScan = false;  // Prevent multiple scans
+
+            // Display backend info and check GPS
+            window.addEventListener('load', () => {
+                document.querySelector('#backendInfo code').textContent =
+                    CONFIG.backend;
+                checkGPSStatus();
+            });
+
+            async function checkGPSStatus() {
+                const statusEl = document.getElementById('gpsStatus');
+                const startBtn = document.getElementById('startBtn');
+
+                // Bypass GPS check untuk development
+                if (CONFIG.bypassGPS) {
+                    statusEl.textContent = '⚠️ GPS bypass aktif (DEV MODE)';
+                    statusEl.className = 'gps-status valid';
+                    startBtn.disabled = false;
+                    // Set dummy position
+                    currentPosition = {
+                        coords: {
+                            latitude: -6.2088,
+                            longitude: 106.8456,
+                            accuracy: 50,
+                        },
+                    };
+                    return;
+                }
+
+                if (!navigator.geolocation) {
+                    statusEl.textContent = '❌ Browser tidak mendukung GPS';
+                    statusEl.className = 'gps-status invalid';
+                    startBtn.disabled = true;
+                    return;
+                }
+
+                try {
+                    const position = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(
+                            resolve,
+                            reject,
+                            {
+                                enableHighAccuracy: true,
+                                timeout: 10000,
+                                maximumAge: 0,
+                            }
+                        );
+                    });
+
+                    const isFake = detectFakeGPS(position);
+
+                    if (isFake) {
+                        statusEl.textContent =
+                            '⚠️ Fake GPS terdeteksi! Nonaktifkan mock location';
+                        statusEl.className = 'gps-status invalid';
+                        startBtn.disabled = true;
+                    } else {
+                        currentPosition = position;
+                        statusEl.textContent = `✅ GPS aktif (akurasi: ${Math.round(
+                            position.coords.accuracy
+                        )}m)`;
+                        statusEl.className = 'gps-status valid';
+                        startBtn.disabled = false;
+                    }
+                } catch (error) {
+                    statusEl.textContent =
+                        '❌ GPS tidak aktif. Aktifkan lokasi di pengaturan';
+                    statusEl.className = 'gps-status invalid';
+                    startBtn.disabled = true;
+                }
+            }
+
+            function detectFakeGPS(position) {
+                const accuracy = position.coords.accuracy;
+
+                // Deteksi fake GPS berdasarkan beberapa indikator
+                if (accuracy === 0) return true; // Mock location biasanya accuracy = 0
+                if (accuracy > 200) return true; // Accuracy terlalu buruk (> 200m)
+
+                // Cek apakah ada mock location indicator (Android)
+                if (
+                    position.coords.hasOwnProperty('mock') &&
+                    position.coords.mock
+                ) {
+                    return true;
+                }
+
+                return false;
+            }
+
+            async function startScanner() {
+                if (!currentPosition) {
+                    showAlert(
+                        'GPS tidak tersedia. Refresh halaman dan coba lagi.',
+                        'error'
+                    );
+                    return;
+                }
+
+                // Hide setup, show scanner
+                document.getElementById('setupForm').classList.add('hidden');
+                document
+                    .getElementById('scannerContainer')
+                    .classList.add('active');
+
+                // Start camera
+                html5QrCode = new Html5Qrcode('scanner');
+
+                try {
+                    await html5QrCode.start(
+                        { facingMode: 'environment' },
+                        {
+                            fps: 30,  // Increased from 10 to 30 for faster detection
+                            qrbox: { width: 280, height: 280 },  // Larger scan area
+                            aspectRatio: 1.0,
+                        },
+                        onScanSuccess,
+                        onScanFailure
+                    );
+
+                    // Get video stream for torch control
+                    const videoElement =
+                        document.querySelector('#scanner video');
+                    if (videoElement && videoElement.srcObject) {
+                        currentStream = videoElement.srcObject;
+                    }
+                } catch (err) {
+                    showAlert(`Gagal membuka kamera: ${err}`, 'error');
+                    stopScanner();
+                }
+            }
+
+            async function onScanSuccess(decodedText, decodedResult) {
+                // Prevent multiple scans with lock
+                if (isProcessingScan) {
+                    return;
+                }
+                isProcessingScan = true;
+
+                // INSTANT FREEZE: Stop scanner and freeze video frame
+                if (html5QrCode) {
+                    html5QrCode.pause();
+                    
+                    // Visual feedback: Add green border to indicate capture
+                    const scannerEl = document.getElementById('scanner');
+                    scannerEl.style.border = '5px solid #10b981';
+                    scannerEl.style.transition = 'border 0.2s';
+                }
+
+                // Play success sound/vibration
+                if (navigator.vibrate) {
+                    navigator.vibrate(200);  // 200ms vibration
+                }
+
+                showAlert('✅ QR Terbaca! Memproses...', 'success');
+
+                // Re-check GPS before submitting
+                try {
+                    const freshPosition = await new Promise(
+                        (resolve, reject) => {
+                            navigator.geolocation.getCurrentPosition(
+                                resolve,
+                                reject,
+                                {
+                                    enableHighAccuracy: true,
+                                    timeout: 5000,
+                                    maximumAge: 0,
+                                }
+                            );
+                        }
+                    );
+
+                    if (detectFakeGPS(freshPosition)) {
+                        showAlert(
+                            '⚠️ Fake GPS terdeteksi saat scan! Absensi ditolak.',
+                            'error'
+                        );
+                        resetScanner();
+                        return;
+                    }
+
+                    await submitAttendance(decodedText, freshPosition);
+                } catch (error) {
+                    showAlert('❌ Gagal mendapatkan lokasi GPS', 'error');
+                    resetScanner();
+                }
+            }
+
+            function onScanFailure(error) {
+                // Silent fail - QR not detected yet
+            }
+
+            async function submitAttendance(token, position) {
+                try {
+                    const response = await fetch(
+                        `${CONFIG.backend}/attendance/scan`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                Authorization: `Bearer ${CONFIG.accessToken}`,
+                            },
+                            body: JSON.stringify({
+                                token: token,
+                                ae_lat: position.coords.latitude,
+                                ae_lon: position.coords.longitude,
+                            }),
+                        }
+                    );
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        const status = data.data?.as_status || 'success';
+                        const action = status === 'checked-in' ? 'Check-In' : 'Check-Out';
+                        showAlert(`✅ ${action} berhasil!`, 'success');
+                        
+                        // Success: wait 3 seconds then reset
+                        setTimeout(() => resetScanner(), 3000);
+                    } else {
+                        const errorMsg = data.message || data.detail || 'Scan gagal';
+                        showAlert(`❌ ${errorMsg}`, 'error');
+                        setTimeout(() => resetScanner(), 3000);
+                    }
+                } catch (error) {
+                    showAlert(`❌ Network error: ${error.message}`, 'error');
+                    setTimeout(() => resetScanner(), 3000);
+                }
+            }
+
+            function resetScanner() {
+                // Reset visual state
+                const scannerEl = document.getElementById('scanner');
+                if (scannerEl) {
+                    scannerEl.style.border = '';
+                }
+                
+                // Resume scanning
+                isProcessingScan = false;
+                if (html5QrCode) {
+                    html5QrCode.resume();
+                }
+            }
+
+            async function toggleTorch() {
+                if (!currentStream) return;
+
+                const track = currentStream.getVideoTracks()[0];
+                const capabilities = track.getCapabilities();
+
+                if (capabilities.torch) {
+                    try {
+                        const isEnabled =
+                            document.getElementById('torchToggle').checked;
+                        await track.applyConstraints({
+                            advanced: [{ torch: isEnabled }],
+                        });
+                    } catch (err) {
+                        console.error('Torch error:', err);
+                        showAlert(
+                            '⚠️ Flashlight tidak tersedia di perangkat ini',
+                            'warning'
+                        );
+                    }
+                } else {
+                    showAlert(
+                        '⚠️ Flashlight tidak didukung di perangkat ini',
+                        'warning'
+                    );
+                    document.getElementById('torchToggle').checked = false;
+                }
+            }
+
+            async function stopScanner() {
+                if (html5QrCode) {
+                    try {
+                        await html5QrCode.stop();
+                    } catch (err) {
+                        console.error('Stop error:', err);
+                    }
+                    html5QrCode = null;
+                }
+
+                currentStream = null;
+                document.getElementById('torchToggle').checked = false;
+
+                // Reset view
+                document.getElementById('setupForm').classList.remove('hidden');
+                document
+                    .getElementById('scannerContainer')
+                    .classList.remove('active');
+                document.getElementById('scanStatus').innerHTML = '';
+
+                // Re-check GPS
+                checkGPSStatus();
+            }
+
+            function showAlert(message, type) {
+                const statusEl = document.getElementById('scanStatus');
+                statusEl.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+            }
+
+            // Service Worker for PWA
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register(
+                    'data:text/javascript;base64,c2VsZi5hZGRFdmVudExpc3RlbmVyKCdpbnN0YWxsJywgKCkgPT4gc2VsZi5za2lwV2FpdGluZygpKTsKc2VsZi5hZGRFdmVudExpc3RlbmVyKCdhY3RpdmF0ZScsICgpID0+IHNlbGYuY2xpZW50cy5jbGFpbSgpKTs='
+                );
+            }
+
+            // Prevent back button during scan
+            window.addEventListener('popstate', () => {
+                if (html5QrCode) {
+                    const confirmStop = confirm(
+                        'Scanner sedang aktif. Stop scanner?'
+                    );
+                    if (confirmStop) {
+                        stopScanner();
+                    } else {
+                        window.history.pushState(
+                            null,
+                            '',
+                            window.location.href
+                        );
+                    }
+                }
+            });
+            window.history.pushState(null, '', window.location.href);
+        </script>
+    </body>
+</html>

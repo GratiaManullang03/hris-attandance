@@ -34,7 +34,7 @@ attendance_service = AttendanceService()
 )
 async def get_rolling_token(
     si_id: str,
-    x_display_key: str = Header(..., alias="X-Display-Key"),
+    x_display_key: Optional[str] = Header(None, alias="X-Display-Key"),
     db: Session = Depends(get_db)
 ):
     """
@@ -49,7 +49,7 @@ async def get_rolling_token(
     - Expires_in seconds remaining
     """
     # Validate display API key
-    if x_display_key != settings.DISPLAY_API_KEY:
+    if not x_display_key or x_display_key != settings.DISPLAY_API_KEY:
         raise ForbiddenException("Invalid display API key")
     
     token_response = attendance_service.generate_rolling_token(db, si_id)

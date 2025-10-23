@@ -4,7 +4,7 @@ JWT Service for QR token generation and validation
 import jwt
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
 from app.core.config import settings
@@ -25,7 +25,7 @@ class JwtService:
         Returns:
             dict: {token: str, slot: int, expires_in: int}
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         slot = int(time.time())  # Current Unix timestamp as slot
         expires_in = self.rotation_seconds + self.grace_seconds
         exp = now + timedelta(seconds=expires_in)

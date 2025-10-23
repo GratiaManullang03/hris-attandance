@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="id">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="theme-color" content="#2563eb" />
+        <title>Display QR - HRIS Attendance</title>
+        <link
+            rel="manifest"
+            href="data:application/json;base64,eyJuYW1lIjoiRGlzcGxheSBRUiAtIEhSSVMiLCJzaG9ydF9uYW1lIjoiRGlzcGxheSBRUiIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjZmZmZmZmIiwidGhlbWVfY29sb3IiOiIjMjU2M2ViIn0=" />
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                    Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .container {
+                max-width: 700px;
+                width: 100%;
+                padding: 20px;
+            }
+            .card {
+                background: white;
+                border-radius: 20px;
+                padding: 40px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            }
+            h1 {
+                font-size: 32px;
+                margin-bottom: 30px;
+                color: #333;
+                text-align: center;
+                font-weight: 700;
+            }
+            .display-area {
+                display: none;
+            }
+            .display-area.active {
+                display: block;
+            }
+            #qrDisplay {
+                width: 500px;
+                height: 500px;
+                margin: 30px auto;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 15px;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+                background: white;
+            }
+            #qrDisplay img,
+            #qrDisplay canvas {
+                max-width: 100%;
+                height: auto;
+            }
+            .status {
+                text-align: center;
+                margin: 20px 0;
+                padding: 15px;
+                border-radius: 10px;
+                background: #f3f4f6;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            .status.success {
+                background: #d1fae5;
+                color: #065f46;
+            }
+            .status.error {
+                background: #fee2e2;
+                color: #991b1b;
+            }
+            .site-info {
+                text-align: center;
+                margin-bottom: 20px;
+                padding: 15px;
+                background: #f9fafb;
+                border-radius: 10px;
+            }
+            .site-info h2 {
+                font-size: 24px;
+                color: #2563eb;
+                margin-bottom: 5px;
+            }
+            .site-info p {
+                color: #6b7280;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="card">
+                <h1>🖥️ Display QR Code</h1>
+
+                <!-- Display Area -->
+                <div class="display-area" id="displayArea">
+                    <div class="site-info" id="siteInfo">
+                        <h2>Site #<span id="siteName"></span></h2>
+                        <p>
+                            QR Code refresh setiap
+                            <span id="refreshDuration"></span> detik
+                        </p>
+                    </div>
+                    <div id="qrDisplay"></div>
+                    <div class="status" id="displayStatus"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- QRCode library -->
+        <script src="https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"></script>
+
+        <script>
+            // ========================================
+            // CONFIG - EDIT DI SINI
+            // ========================================
+            const CONFIG = {
+                backend:
+                    'https://sona-semianimated-horridly.ngrok-free.dev/api/v1',
+                displayKey: 'ad6a4809-3167-4cfa-9dcf-c7ce61f8e02e',
+                siteId: 'HQ1',
+                duration: 30, // dalam detik
+            };
+            // ========================================
+
+            // Ensure QRCode library available (with fallback)
+            async function loadScript(src) {
+                return new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = src;
+                    s.onload = resolve;
+                    s.onerror = reject;
+                    document.head.appendChild(s);
+                });
+            }
+
+            async function ensureQRCodeLib() {
+                if (window.QRCode) return;
+                throw new Error('QRCode library not loaded');
+            }
+
+            let displayInterval = null;
+            let countdownInterval = null;
+            let remainingSeconds = 0;
+
+            // Auto-start on load
+            window.addEventListener('load', () => {
+                ensureQRCodeLib()
+                    .then(() => startDisplay())
+                    .catch((err) => {
+                        showStatus(`❌ Error: ${err.message}`, 'error');
+                        console.error(err);
+                    });
+            });
+
+            async function startDisplay() {
+                // Show display area
+                document.getElementById('displayArea').classList.add('active');
+                document.getElementById('siteName').textContent = CONFIG.siteId;
+                document.getElementById('refreshDuration').textContent =
+                    CONFIG.duration;
+
+                // Start fetching QR
+                fetchAndDisplayQR();
+                displayInterval = setInterval(
+                    fetchAndDisplayQR,
+                    CONFIG.duration * 1000
+                );
+            }
+
+            async function fetchAndDisplayQR() {
+                try {
+                    const response = await fetch(
+                        `${CONFIG.backend}/attendance/sites/${CONFIG.siteId}/rolling-token`,
+                        {
+                            headers: { 'X-Display-Key': CONFIG.displayKey },
+                        }
+                    );
+
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP ${response.status}: ${response.statusText}`
+                        );
+                    }
+
+                    const result = await response.json();
+
+                    // Cek response format dari backend
+                    if (!result.success || !result.data) {
+                        throw new Error(
+                            result.message || 'Invalid response format'
+                        );
+                    }
+
+                    const data = result.data; // Ambil dari property 'data'
+                    const qrContainer = document.getElementById('qrDisplay');
+
+                    // Clear previous QR
+                    qrContainer.innerHTML = '';
+
+                    // Generate QR code using davidshimjs-qrcodejs
+                    if (!window.QRCode) {
+                        throw new Error('QRCode library not available');
+                    }
+                    new QRCode(qrContainer, {
+                        text: data.token,
+                        width: 500,
+                        height: 500,
+                        colorDark: '#000000',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.H,
+                    });
+
+                    // Start countdown
+                    startCountdown(data.expires_in);
+                } catch (error) {
+                    showStatus(`❌ Error: ${error.message}`, 'error');
+                    console.error('Display error:', error);
+                }
+            }
+
+            function showStatus(message, type) {
+                const statusEl = document.getElementById('displayStatus');
+                statusEl.textContent = message;
+                statusEl.className = `status ${type}`;
+            }
+
+            function startCountdown(seconds) {
+                // Clear previous countdown
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                }
+
+                remainingSeconds = seconds;
+                updateCountdownDisplay();
+
+                countdownInterval = setInterval(() => {
+                    remainingSeconds--;
+                    if (remainingSeconds <= 0) {
+                        clearInterval(countdownInterval);
+                        remainingSeconds = 0;
+                    }
+                    updateCountdownDisplay();
+                }, 1000);
+            }
+
+            function updateCountdownDisplay() {
+                showStatus(`⏱️ Expires in: ${remainingSeconds}s`, 'success');
+            }
+
+            // Service Worker for PWA
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register(
+                    'data:text/javascript;base64,c2VsZi5hZGRFdmVudExpc3RlbmVyKCdpbnN0YWxsJywgKCkgPT4gc2VsZi5za2lwV2FpdGluZygpKTsKc2VsZi5hZGRFdmVudExpc3RlbmVyKCdhY3RpdmF0ZScsICgpID0+IHNlbGYuY2xpZW50cy5jbGFpbSgpKTs='
+                );
+            }
+
+            // Prevent screen sleep
+            let wakeLock = null;
+            async function requestWakeLock() {
+                try {
+                    if ('wakeLock' in navigator) {
+                        wakeLock = await navigator.wakeLock.request('screen');
+                    }
+                } catch (err) {
+                    console.log('Wake Lock error:', err);
+                }
+            }
+            requestWakeLock();
+        </script>
+    </body>
+</html>

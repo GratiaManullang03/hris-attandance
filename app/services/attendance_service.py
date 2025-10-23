@@ -149,16 +149,16 @@ class AttendanceService:
         site_id = token_payload["si_id"]
         jti = token_payload["jti"]
         
-        # 2. Anti-replay protection
-        if not self.jti_repo.mark_jti_as_used(db, jti):
-            raise ConflictException("Replay detected")
-        
-        # 3. Geofence validation
+        # 2. Geofence validation (BEFORE marking JTI as used)
         if request.ae_lat is not None and request.ae_lon is not None:
             self._validate_geofence(db, site_id, request.ae_lat, request.ae_lon)
         else:
             if settings.GEOFENCE_ENFORCED:
                 raise BadRequestException("Location coordinates required for geofence validation")
+        
+        # 3. Anti-replay protection (AFTER all validations pass)
+        if not self.jti_repo.mark_jti_as_used(db, jti):
+            raise ConflictException("Replay detected")
         
         # 4. Determine action: check-in or check-out
         now = datetime.utcnow()
