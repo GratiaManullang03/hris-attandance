@@ -326,7 +326,7 @@
                 backend:
                     'https://sona-semianimated-horridly.ngrok-free.dev/api/v1', // GANTI DENGAN URL NGROK KAMU!
                 accessToken:
-                    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyIiwidXNlcm5hbWUiOiJncmF0aWEiLCJlbWFpbCI6ImZlbGl4bWFudWxsYW5nODFAZ21haWwuY29tIiwic3RhdHVzIjoiYWN0aXZlIiwiZXhwIjoxNzYxMTk1NTMzLCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzYxMTkzNzMzLCJqdGkiOiI2YTA0NGNlNjNmZWMzNzQ5YmQzMTNkMmQ5MzkyMzVjZCJ9.KB3Po0IwzUqF3UbBKPLLDjsew3fbe1BH49AWFdH5EE0',
+                    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyIiwidXNlcm5hbWUiOiJncmF0aWEiLCJlbWFpbCI6ImZlbGl4bWFudWxsYW5nODFAZ21haWwuY29tIiwic3RhdHVzIjoiYWN0aXZlIiwiZXhwIjoxNzYxMzk0NTEwLCJ0eXBlIjoiYWNjZXNzIiwiaWF0IjoxNzYxMzkyNzEwLCJqdGkiOiJiM2Y3MzIzYjIwZGFhNDRjYTcxNTQ2YjQ1MGM0ZDVhMyJ9.PYDNn-GeU64GVl0Cdq9TtzqRVfpvCdW_iclg2sBIKIM',
                 // Set true untuk bypass GPS check (HANYA UNTUK DEVELOPMENT!)
                 bypassGPS: false,
             };
@@ -384,27 +384,15 @@
                         );
                     });
 
-                    const isFake = detectFakeGPS(position);
-
-                    if (isFake) {
-                        statusEl.innerHTML =
-                            '🚫 <strong>FAKE GPS TERDETEKSI!</strong><br>Nonaktifkan Mock Location / Fake GPS app';
-                        statusEl.className = 'gps-status invalid';
-                        startBtn.disabled = true;
-                        startBtn.textContent = '🚫 GPS Tidak Valid';
-                        startBtn.style.background = '#dc2626';
-                        startBtn.style.cursor = 'not-allowed';
-                    } else {
-                        currentPosition = position;
-                        statusEl.textContent = `✅ GPS aktif (akurasi: ${Math.round(
-                            position.coords.accuracy
-                        )}m)`;
-                        statusEl.className = 'gps-status valid';
-                        startBtn.disabled = false;
-                        startBtn.textContent = 'Mulai Scanner';
-                        startBtn.style.background = '';
-                        startBtn.style.cursor = '';
-                    }
+                    currentPosition = position;
+                    statusEl.textContent = `✅ GPS aktif (akurasi: ${Math.round(
+                        position.coords.accuracy
+                    )}m)`;
+                    statusEl.className = 'gps-status valid';
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Mulai Scanner';
+                    startBtn.style.background = '';
+                    startBtn.style.cursor = '';
                 } catch (error) {
                     statusEl.textContent =
                         '❌ GPS tidak aktif. Aktifkan lokasi di pengaturan';
@@ -413,75 +401,6 @@
                 }
             }
 
-            function detectFakeGPS(position) {
-                const coords = position.coords;
-                const accuracy = coords.accuracy;
-                const altitude = coords.altitude;
-                const altitudeAccuracy = coords.altitudeAccuracy;
-                const heading = coords.heading;
-                const speed = coords.speed;
-
-                console.log('GPS Data:', {
-                    accuracy,
-                    altitude,
-                    altitudeAccuracy,
-                    heading,
-                    speed,
-                    lat: coords.latitude,
-                    lon: coords.longitude
-                });
-
-                // ===== MULTI-LAYER FAKE GPS DETECTION =====
-
-                // 1. Accuracy = 0 atau terlalu presisi (fake GPS ciri khas)
-                if (accuracy === 0 || accuracy < 3) {
-                    console.warn('Fake GPS: Accuracy too perfect');
-                    return true;
-                }
-
-                // 2. Accuracy terlalu buruk (> 100m)
-                if (accuracy > 100) {
-                    console.warn('Fake GPS: Accuracy too bad');
-                    return true;
-                }
-
-                // 3. Mock location indicator (Android)
-                if (coords.hasOwnProperty('mock') && coords.mock === true) {
-                    console.warn('Fake GPS: Mock flag detected');
-                    return true;
-                }
-
-                // 4. Altitude null atau 0 (fake GPS jarang set altitude)
-                if (altitude === null || altitude === 0) {
-                    console.warn('Fake GPS: No altitude data');
-                    return true;
-                }
-
-                // 5. Heading dan speed null padahal device bergerak
-                // (fake GPS statis tidak set ini)
-                if (heading === null && speed === null) {
-                    console.warn('Fake GPS: No heading/speed data');
-                    return true;
-                }
-
-                // 6. Koordinat suspicious (0,0 atau values aneh)
-                if (
-                    coords.latitude === 0 && coords.longitude === 0 ||
-                    Math.abs(coords.latitude) > 90 ||
-                    Math.abs(coords.longitude) > 180
-                ) {
-                    console.warn('Fake GPS: Invalid coordinates');
-                    return true;
-                }
-
-                // 7. AltitudeAccuracy null (real GPS selalu ada)
-                if (altitudeAccuracy === null) {
-                    console.warn('Fake GPS: No altitude accuracy');
-                    return true;
-                }
-
-                return false;
-            }
 
             async function startScanner() {
                 if (!currentPosition) {
@@ -561,15 +480,6 @@
                             );
                         }
                     );
-
-                    if (detectFakeGPS(freshPosition)) {
-                        showAlert(
-                            '⚠️ Fake GPS terdeteksi saat scan! Absensi ditolak.',
-                            'error'
-                        );
-                        resetScanner();
-                        return;
-                    }
 
                     await submitAttendance(decodedText, freshPosition);
                 } catch (error) {

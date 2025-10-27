@@ -412,10 +412,6 @@ hris-attendance/
 
 Needs to be implemented using APScheduler or cron:
 
-1. **Auto-checkout Job**
-   - Schedule: Daily at `AUTO_CHECKOUT_CRON` time
-   - Task: Close all open attendance sessions
-
 2. **JTI Cleanup Job**
    - Schedule: Daily
    - Task: Delete `used_jti` records older than token expiry (1-7 days)
